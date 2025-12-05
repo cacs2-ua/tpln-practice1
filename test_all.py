@@ -19,6 +19,14 @@ from section5_tfidf import (
     top_terms_for_doc,
 )
 
+from section6_queries import (
+    QueryItem,
+    build_query_item,
+    get_default_queries,
+    get_query_texts,
+    validate_queries,
+)
+
 
 class TestSection3Preprocessing(unittest.TestCase):
     def test_basic_concatenation_rule(self):
@@ -35,7 +43,7 @@ class TestSection3Preprocessing(unittest.TestCase):
         records = [{"title": "T", "abstract": "X"} for _ in range(5)]
         cfg = PrepConfig(make_dataframe=False)
         paper_texts, _ = build_paper_texts(records, cfg)
-        validate_paper_texts(paper_texts, expected_n=5)  # should not raise
+        validate_paper_texts(paper_texts, expected_n=5)
 
     def test_type_coercion_is_minimal_and_safe(self):
         records = [{"title": 123, "abstract": None}]
@@ -146,12 +154,11 @@ class TestSection5Tfidf(unittest.TestCase):
 
     def test_tfidf_l2_norms_are_about_one(self):
         texts = ["cat sat", "dog sat", "cat dog"]
-        vect, X = build_tfidf_vectors(texts, TfidfConfig(name="n", lowercase=True, stop_words=None))
+        _, X = build_tfidf_vectors(texts, TfidfConfig(name="n", lowercase=True, stop_words=None))
         norms = l2_norm_sample_stats(X, sample_n=3, seed=0)
         self.assertAlmostEqual(norms["mean"], 1.0, places=6)
 
     def test_tfidf_idf_downweights_common_terms_when_tf_equal(self):
-        # common appears in all docs; rare appears in only one doc => rare should get higher weight (tf equal)
         texts = ["common rare1", "common rare2"]
         vect, X = build_tfidf_vectors(texts, TfidfConfig(name="idf", lowercase=True, stop_words=None))
         feats = vect.get_feature_names_out().tolist()
@@ -167,9 +174,43 @@ class TestSection5Tfidf(unittest.TestCase):
         vect, X = build_tfidf_vectors(texts, TfidfConfig(name="top", lowercase=True, stop_words=None))
         top = top_terms_for_doc(X, vect, doc_index=0, top_n=5)
         self.assertTrue(len(top) > 0)
-        # weights should be non-increasing
         weights = [w for _, w in top]
-        self.assertTrue(all(weights[i] >= weights[i+1] for i in range(len(weights)-1)))
+        self.assertTrue(all(weights[i] >= weights[i + 1] for i in range(len(weights) - 1)))
+
+
+class TestSection6Queries(unittest.TestCase):
+    def test_default_queries_exist_and_valid(self):
+        queries = get_default_queries(joiner=" ")
+        validate_queries(queries)  # should not raise
+        self.assertEqual(len(queries), 3)
+        self.assertEqual([q.label for q in queries], ["Query 1", "Query 2", "Query 3"])
+        self.assertTrue(all(isinstance(q, QueryItem) for q in queries))
+
+    def test_query_texts_are_in_order(self):
+        queries = get_default_queries(joiner=" ")
+        texts = get_query_texts(queries)
+        self.assertEqual(len(texts), 3)
+        self.assertTrue(all(isinstance(t, str) and len(t) > 0 for t in texts))
+
+    def test_build_query_item_strict_joiner(self):
+        with self.assertRaises(ValueError):
+            build_query_item("Query 1", "T", "A", joiner="  ")  # not exactly one space
+        with self.assertRaises(ValueError):
+            build_query_item("Query 1", "T", "A", joiner="")    # not exactly one space
+
+    def test_validate_queries_rejects_wrong_order(self):
+        q1 = build_query_item("Query 1", "T1", "A1", joiner=" ")
+        q2 = build_query_item("Query 2", "T2", "A2", joiner=" ")
+        q3 = build_query_item("Query 3", "T3", "A3", joiner=" ")
+        with self.assertRaises(AssertionError):
+            validate_queries([q2, q1, q3])  # wrong order/labels
+
+    def test_validate_queries_rejects_bad_text_pipeline(self):
+        bad = QueryItem(label="Query 1", title="T", abstract="A", text="T  A")
+        q2 = build_query_item("Query 2", "T2", "A2", joiner=" ")
+        q3 = build_query_item("Query 3", "T3", "A3", joiner=" ")
+        with self.assertRaises(AssertionError):
+            validate_queries([bad, q2, q3])
 
 
 if __name__ == "__main__":

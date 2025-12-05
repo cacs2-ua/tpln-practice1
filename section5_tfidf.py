@@ -95,9 +95,6 @@ def case_sensitive_stopword_survivors(vectorizer: TfidfVectorizer) -> int:
     """
     Detect the nuance: with lowercase=False and stop_words='english',
     capitalized variants of stopwords (e.g., 'The') can survive.
-
-    Returns how many vocabulary terms are "stopwords after lowercasing"
-    but are not exactly in the stopword list (case mismatch).
     """
     stop = vectorizer.get_stop_words()
     if not stop:
@@ -137,18 +134,20 @@ def l2_norm_sample_stats(X, sample_n: int = 50, seed: int = 0) -> Dict[str, floa
     }
 
 
-def top_terms_for_doc(X, vectorizer: TfidfVectorizer, doc_index: int, top_n: int = 10) -> List[Tuple[str, float]]:
-    """
-    Return top-N (term, tf-idf weight) pairs for one document row in a sparse matrix.
-    """
+def top_terms_for_doc(
+    X,
+    vectorizer: TfidfVectorizer,
+    doc_index: int,
+    top_n: int = 10,
+) -> List[Tuple[str, float]]:
+    """Return top-N (term, tf-idf weight) pairs for one document row."""
     feats = vectorizer.get_feature_names_out()
     row = X.getrow(doc_index)
     if row.nnz == 0:
         return []
 
     order = np.argsort(row.data)[::-1][:top_n]
-    terms = [(feats[row.indices[i]], float(row.data[i])) for i in order]
-    return terms
+    return [(feats[row.indices[i]], float(row.data[i])) for i in order]
 
 
 def run_tfidf_grid(texts: Sequence[str], sample_n_for_norms: int = 50) -> Dict[str, Dict[str, Any]]:
@@ -156,8 +155,6 @@ def run_tfidf_grid(texts: Sequence[str], sample_n_for_norms: int = 50) -> Dict[s
     Run the 2x2 grid required by the assignment:
       - lowercase ON/OFF
       - stopwords OFF/ON ('english')
-
-    Returns a dict keyed by config name with vectorizer, X, stats, norms.
     """
     configs = [
         TfidfConfig(name="tfidf_lc_on_sw_off",  lowercase=True,  stop_words=None),
