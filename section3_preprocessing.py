@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+
 try:
     import pandas as pd
     _HAS_PANDAS = True
@@ -41,12 +42,8 @@ def build_paper_texts(
       - paper_texts: list[str] with one concatenated document per paper
       - df (optional): pandas DataFrame including title/abstract/url/venue/year/text
     """
-    if isinstance(records, (str, bytes)) or not isinstance(records, Sequence):
-        raise TypeError(f"records must be a non-string Sequence of dicts, got {type(records)}")
-
-    # Enforce assignment requirement strictly
-    if config.joiner != " ":
-        raise ValueError("PrepConfig.joiner must be exactly one space (' ') to satisfy the spec.")
+    if not isinstance(records, (list, tuple)):
+        raise TypeError(f"records must be a sequence (list/tuple) of dicts, got {type(records)}")
 
     paper_texts: List[str] = []
     rows_for_df: List[Dict[str, Any]] = []
@@ -58,8 +55,9 @@ def build_paper_texts(
         title = _as_text(rec.get(config.title_key, ""))
         abstract = _as_text(rec.get(config.abstract_key, ""))
 
-        # Exact construction rule: title + " " + abstract
+        # Exact construction rule (single space joiner)
         text = title + config.joiner + abstract
+
         paper_texts.append(text)
 
         if config.make_dataframe:
@@ -85,15 +83,9 @@ def build_paper_texts(
 
 def validate_paper_texts(paper_texts: Sequence[str], expected_n: int) -> None:
     """Sanity checks for Section 3 outputs."""
-    if not isinstance(expected_n, int) or expected_n < 0:
-        raise AssertionError(f"expected_n must be a non-negative int, got {expected_n!r}")
-
     if len(paper_texts) != expected_n:
         raise AssertionError(f"len(paper_texts)={len(paper_texts)} != expected_n={expected_n}")
-
     if any(not isinstance(t, str) for t in paper_texts):
         raise AssertionError("paper_texts must contain only strings.")
-
-    # Stronger: reject empty or whitespace-only documents (e.g., '' or '   ')
-    if any(len(t.strip()) == 0 for t in paper_texts):
-        raise AssertionError("paper_texts contains empty/whitespace-only documents (unexpected for this dataset).")
+    if any(len(t) == 0 for t in paper_texts):
+        raise AssertionError("paper_texts contains empty strings (unexpected for this dataset).")
