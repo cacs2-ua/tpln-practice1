@@ -376,3 +376,48 @@ TF-IDF,tfidf_lc_on_sw_on,True,english,Query 2,3,658,0.2639197819849893,Interpret
 TF-IDF,tfidf_lc_on_sw_on,True,english,Query 3,1,426,0.3025056669447462,Privacy-preserving Neural Representations of Text,EMNLP,2018,http://aclweb.org/anthology/D18-1001,"Text summarization and text simplification are two major ways to simplify the text for poor readers, including children, non-native speakers, and the functionally illiterate. Text summarization is to produce a brief summ..."
 TF-IDF,tfidf_lc_on_sw_on,True,english,Query 3,2,780,0.28236511632470324,Integrating Transformer and Paraphrase Rules for Sentence Simplification,EMNLP,2018,http://aclweb.org/anthology/D18-1355,Sentence simplification aims to reduce the complexity of a sentence while retaining its original meaning. Current models for sentence simplification adopted ideas from ma- chine translation studies and implicitly learned...
 TF-IDF,tfidf_lc_on_sw_on,True,english,Query 3,3,239,0.22469677620045392,Sentence Simplification with Deep Reinforcement Learning,EMNLP,2017,http://aclweb.org/anthology/D17-1062,Sentence simplification aims to make sentences easier to read and understand. Most recent approaches draw on insights from machine translation to learn simplification rewrites from monolingual corpora of complex and simp...
+
+
+
+
+
+---- SECTION 8 PLOTS ----
+ 
+  
+
+repr	run	lowercase	stop_words	query	rank	doc_id	score	title	venue	year	url	abstract_snippet
+0	BoW	bow_lc_off_sw_off	False	None	Query 1	1	412	0.586223	Neural Machine Translation with Source Depende...	EMNLP	2017	http://aclweb.org/anthology/D17-1304	We first observe a potential weakness of conti...
+1	BoW	bow_lc_off_sw_off	False	None	Query 1	2	100	0.548672	HUME: Human UCCA-Based Evaluation of Machine T...	EMNLP	2016	http://aclweb.org/anthology/D16-1134	Recent research suggests that neural machine t...
+2	BoW	bow_lc_off_sw_off	False	None	Query 1	3	738	0.537821	The Lazy Encoder: A Fine-Grained Analysis of t...	EMNLP	2018	http://aclweb.org/anthology/D18-1313	The advent of the attention mechanism in neura...
+3	BoW	bow_lc_off_sw_off	False	None	Query 2	1	881	0.643517	A Nil-Aware Answer Extraction Framework for Qu...	EMNLP	2018	http://aclweb.org/anthology/D18-1456	In this paper, we present a novel approach to ...
+4	BoW	bow_lc_off_sw_off	False	None	Query 2	2	522	0.603882	Utilizing Character and Word Embeddings for Te...	EMNLP	2018	http://aclweb.org/anthology/D18-1097	Text normalization is an important enabling te...
+5	BoW	bow_lc_off_sw_off	False	None	Query 2	3	756	0.600762	Learning When to Concentrate or Divert Attenti...	EMNLP	2018	http://aclweb.org/anthology/D18-1331	Most of the Neural Machine Translation (NMT) m...
+6	BoW	bow_lc_off_sw_off	False	None	Query 3	1	426	0.476801	Privacy-preserving Neural Representations of Text	EMNLP	2018	http://aclweb.org/anthology/D18-1001	Text summarization and text simplification are...
+7	BoW	bow_lc_off_sw_off	False	None	Query 3	2	488	0.473538	Learning Unsupervised Word Translations Withou...	EMNLP	2018	http://aclweb.org/anthology/D18-1063	Recent research has shown that word embedding ...
+8	BoW	bow_lc_off_sw_off	False	None	Query 3	3	286	0.461908	A Joint Sequential and Relational Model for Fr...	EMNLP	2017	http://aclweb.org/anthology/D17-1128	We propose a framework for parsing video and t...
+9	BoW	bow_lc_off_sw_on	False	english	Query 1	1	762	0.477051	Prediction Improves Simultaneous Neural Machin...	EMNLP	2018	http://aclweb.org/anthology/D18-1337	We investigate the potential of attention-base...
+10	BoW	bow_lc_off_sw_on	False	english	Query 1	2	100	0.467475	HUME: Human UCCA-Based Evaluation of Machine T...	EMNLP	2016	http://aclweb.org/anthology/D16-1134	Recent research suggests that neural machine t...
+11	BoW	bow_lc_off_sw_on	False	english	Query 1	3	936	0.455723	Has Machine Translation Achieved Human Parity?...	EMNLP	2018	http://aclweb.org/anthology/D18-1512	Recent research suggests that neural machine t...
+
+
+
+
+## Analysis of the graphs
+
+### Query 1
+
+* **Score-separation plot:** BoW runs show **higher** similarities and a *visible but modest* rank1–rank3 gap, whereas TF-IDF runs sit around **~0.32–0.35** with **rank1/2/3 almost tied**. This visually strengthens the idea that **TF-IDF’s ordering for Q1 is “fragile”** (many near-ties), beyond what you could infer from a table alone.
+* **Jaccard heatmap:** It looks **block-structured**: TF-IDF variants overlap strongly with each other, but BoW variants overlap less consistently—especially across **sw_off vs sw_on**. So, for Q1, *preprocessing toggles matter more for BoW’s retrieved set than for TF-IDF’s*.
+* **Diversity bar chart:** **BoW = 7 unique doc_ids vs TF-IDF = 5** (across runs, within top-3). This quantifies that Q1’s BoW retrieval is **less stable/more variable** than TF-IDF, even if both stay in the broad MT/evaluation neighborhood.
+
+### Query 2
+
+* **Score-separation plot:** BoW with **stopwords off** has the strongest top-3 scores (rank1 near the top of the figure), but switching to **stopwords on** causes a **sharp drop** and compresses scores. This matches a *qualitative regime change*: the retrieval is not just “slightly different,” it becomes **materially weaker / reoriented** under that toggle.
+* **Jaccard heatmap:** The clearest pattern is a **near-split** between BoW sw_off and BoW sw_on (very low overlap between those two groups), while TF-IDF configs show **moderate overlap** (some pairs high, some mid). In other words: **Query 2 is the most preprocessing-sensitive query under BoW**, and the heatmap makes that sensitivity explicit.
+* **Diversity bar chart:** **BoW = 8 vs TF-IDF = 5** unique doc_ids. This is your strongest numeric evidence that Q2’s BoW top-3 is **the least stable** across preprocessing choices.
+
+### Query 3
+
+* **Score-separation plot:** Scores change with preprocessing, but not always because the *documents* change.
+* **Jaccard heatmap:**within BoW, **sw_off vs sw_on overlaps are ~1.0** (same top-3 doc_id set) in both lc_on and lc_off cases. So for Q3, stopword toggling mostly affects **cosine magnitudes/ranking margins**, not the identity of retrieved documents. TF-IDF also shows very high internal overlap by pairs, while **BoW vs TF-IDF overlap is low**, indicating that **representation choice dominates** (they retrieve different top-3 sets even when each family is internally stable).
+* **Diversity bar chart:** **BoW = 5 vs TF-IDF = 4** unique doc_ids, the smallest gap and lowest totals: Q3 is our **most stable query overall** across runs.
