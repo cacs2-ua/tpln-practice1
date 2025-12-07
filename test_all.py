@@ -27,6 +27,12 @@ from section6_queries import (
     validate_queries,
 )
 
+from section7_similarity import (
+    compute_similarity_matrix,
+    top_k_indices,
+    top_k_for_all_queries,
+)
+
 
 class TestSection3Preprocessing(unittest.TestCase):
     def test_basic_concatenation_rule(self):
@@ -181,7 +187,7 @@ class TestSection5Tfidf(unittest.TestCase):
 class TestSection6Queries(unittest.TestCase):
     def test_default_queries_exist_and_valid(self):
         queries = get_default_queries(joiner=" ")
-        validate_queries(queries)  # should not raise
+        validate_queries(queries)
         self.assertEqual(len(queries), 3)
         self.assertEqual([q.label for q in queries], ["Query 1", "Query 2", "Query 3"])
         self.assertTrue(all(isinstance(q, QueryItem) for q in queries))
@@ -194,16 +200,16 @@ class TestSection6Queries(unittest.TestCase):
 
     def test_build_query_item_strict_joiner(self):
         with self.assertRaises(ValueError):
-            build_query_item("Query 1", "T", "A", joiner="  ")  # not exactly one space
+            build_query_item("Query 1", "T", "A", joiner="  ")
         with self.assertRaises(ValueError):
-            build_query_item("Query 1", "T", "A", joiner="")    # not exactly one space
+            build_query_item("Query 1", "T", "A", joiner="")
 
     def test_validate_queries_rejects_wrong_order(self):
         q1 = build_query_item("Query 1", "T1", "A1", joiner=" ")
         q2 = build_query_item("Query 2", "T2", "A2", joiner=" ")
         q3 = build_query_item("Query 3", "T3", "A3", joiner=" ")
         with self.assertRaises(AssertionError):
-            validate_queries([q2, q1, q3])  # wrong order/labels
+            validate_queries([q2, q1, q3])
 
     def test_validate_queries_rejects_bad_text_pipeline(self):
         bad = QueryItem(label="Query 1", title="T", abstract="A", text="T  A")
@@ -211,6 +217,49 @@ class TestSection6Queries(unittest.TestCase):
         q3 = build_query_item("Query 3", "T3", "A3", joiner=" ")
         with self.assertRaises(AssertionError):
             validate_queries([bad, q2, q3])
+
+
+class TestSection7Similarity(unittest.TestCase):
+    def test_top_k_indices_tie_break_is_deterministic(self):
+        scores = [0.5, 0.5, 0.2, 0.5]
+        top = top_k_indices(scores, k=3)
+        # same score 0.5 -> lowest indices first
+        self.assertTrue(np.array_equal(top, np.array([0, 1, 3])))
+
+    def test_compute_similarity_matrix_shape_and_values_bow(self):
+        docs = ["cat sat", "dog barked", "cat meowed"]
+        queries = ["cat sat", "dog"]
+
+        vect, X_docs = build_bow_vectors(docs, BoWConfig(name="bow", lowercase=True, stop_words=None))
+        X_q = vect.transform(queries)
+
+        S = compute_similarity_matrix(X_q, X_docs)
+        self.assertEqual(S.shape, (2, 3))
+
+        # Query 0 should match doc 0 best; query 1 should match doc 1 best
+        self.assertEqual(int(np.argmax(S[0])), 0)
+        self.assertEqual(int(np.argmax(S[1])), 1)
+
+    def test_top_k_for_all_queries_returns_k_per_query(self):
+        docs = ["a b c", "a b", "x y z"]
+        queries = ["a b", "x y"]
+
+        vect, X_docs = build_tfidf_vectors(docs, TfidfConfig(name="tf", lowercase=True, stop_words=None))
+        X_q = vect.transform(queries)
+
+        S = compute_similarity_matrix(X_q, X_docs)
+        res = top_k_for_all_queries(S, k=2)
+
+        self.assertEqual(len(res), 2)
+        self.assertEqual(len(res[0].top_indices), 2)
+        self.assertEqual(len(res[1].top_indices), 2)
+
+    def test_dimension_mismatch_raises(self):
+        # 2 features vs 3 features should raise
+        q = np.zeros((1, 2))
+        d = np.zeros((3, 3))
+        with self.assertRaises(ValueError):
+            compute_similarity_matrix(q, d)
 
 
 if __name__ == "__main__":

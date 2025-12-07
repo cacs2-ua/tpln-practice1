@@ -1,7 +1,9 @@
+
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence, Tuple
+import sys
 
 import numpy as np
 from sklearn.feature_extraction.text import CountVectorizer
@@ -15,12 +17,20 @@ class BoWConfig:
     Required toggles for the assignment:
       - lowercase: ON vs OFF
       - stop_words: None vs 'english'
+
+    NOTE (important for the unit tests):
+      - sklearn default token_pattern drops 1-character tokens (e.g., "a", "b").
+      - We set token_pattern to accept 1+ char tokens to avoid "empty vocabulary"
+        on synthetic test cases.
     """
     name: str
     lowercase: bool = True
     stop_words: Optional[str] = None
     max_features: Optional[int] = None
     ngram_range: Tuple[int, int] = (1, 1)
+
+    # Accept single-character tokens too (fixes Section 7-style synthetic tests)
+    token_pattern: str = r"(?u)\b\w+\b"
 
 
 def _validate_texts(texts: Sequence[str]) -> None:
@@ -51,8 +61,27 @@ def build_bow_vectors(
         stop_words=config.stop_words,
         max_features=config.max_features,
         ngram_range=config.ngram_range,
+        token_pattern=config.token_pattern,
     )
-    X = vectorizer.fit_transform(texts)
+
+    try:
+        X = vectorizer.fit_transform(texts)
+    except Exception as e:
+        # DEBUG ONLY ON FAILURE (so it doesn't spam normal runs/tests)
+        print("\n[section4_bow] ERROR in build_bow_vectors()", file=sys.stderr)
+        print(f"  - Exception: {type(e).__name__}: {e}", file=sys.stderr)
+        print(f"  - Config.name     : {config.name}", file=sys.stderr)
+        print(f"  - lowercase       : {config.lowercase}", file=sys.stderr)
+        print(f"  - stop_words      : {config.stop_words}", file=sys.stderr)
+        print(f"  - max_features    : {config.max_features}", file=sys.stderr)
+        print(f"  - ngram_range     : {config.ngram_range}", file=sys.stderr)
+        print(f"  - token_pattern   : {config.token_pattern}", file=sys.stderr)
+        print(f"  - N_texts         : {len(texts)}", file=sys.stderr)
+        sample = list(texts[:2])
+        print(f"  - sample texts[0:2]: {[s[:120] for s in sample]}", file=sys.stderr)
+        print("------------------------------------------------------------\n", file=sys.stderr)
+        raise
+
     return vectorizer, X
 
 
@@ -97,7 +126,6 @@ def case_sensitive_stopword_survivors(vectorizer: CountVectorizer) -> int:
 
     survivors = 0
     for f in feats:
-        # survivors like "The" where f.lower() in stop_set but f not in stop_set
         fl = f.lower()
         if fl in stop_set and f not in stop_set:
             survivors += 1
