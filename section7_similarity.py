@@ -1,3 +1,4 @@
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -47,7 +48,7 @@ def top_k_indices(scores: Sequence[float], k: int = 3) -> np.ndarray:
 
     k = min(k, s.size)
     idx = np.arange(s.size)
-    order = np.lexsort((idx, -s))  # primary: -score asc => score desc, tie: idx asc
+    order = np.lexsort((idx, -s))  # primary: score desc, tie: idx asc
     return order[:k]
 
 
@@ -74,7 +75,6 @@ def top_k_for_all_queries(similarity_matrix: np.ndarray, k: int = 3) -> List[Top
 
     for qi in range(n_queries):
         try:
-            # Force 1D numeric row even if input is np.matrix or weird array-like
             scores = np.asarray(similarity_matrix[qi], dtype=float).ravel()
 
             if scores.size != n_papers:
@@ -94,7 +94,6 @@ def top_k_for_all_queries(similarity_matrix: np.ndarray, k: int = 3) -> List[Top
             )
 
         except Exception as e:
-            # ---- DEBUG (only when something actually fails) ----
             print("\n[section7_similarity] ERROR inside top_k_for_all_queries()", file=sys.stderr)
             print(f"  - Exception: {type(e).__name__}: {e}", file=sys.stderr)
             print(f"  - similarity_matrix type : {type(similarity_matrix)}", file=sys.stderr)
@@ -102,12 +101,11 @@ def top_k_for_all_queries(similarity_matrix: np.ndarray, k: int = 3) -> List[Top
             print(f"  - similarity_matrix dtype: {getattr(similarity_matrix, 'dtype', None)}", file=sys.stderr)
             print(f"  - qi (row index)         : {qi}", file=sys.stderr)
             try:
-                sample = scores[:10].tolist()  # may fail if scores wasn't created
+                sample = scores[:10].tolist()
                 print(f"  - scores sample (first 10): {sample}", file=sys.stderr)
             except Exception:
                 print("  - scores sample (first 10): <unavailable>", file=sys.stderr)
             print("------------------------------------------------------------\n", file=sys.stderr)
-            # ---------------------------------------------
             raise
 
     return results

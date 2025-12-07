@@ -1,7 +1,9 @@
+
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence, Tuple
+import sys
 
 import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -15,6 +17,11 @@ class TfidfConfig:
     Required toggles for the assignment:
       - lowercase: ON vs OFF
       - stop_words: None vs 'english'
+
+    NOTE (important for the unit tests):
+      - sklearn default token_pattern drops 1-character tokens (e.g., "a", "b").
+      - Some Section 7 tests use single-letter tokens; without accepting them,
+        TfidfVectorizer can raise: "empty vocabulary".
     """
     name: str
     lowercase: bool = True
@@ -27,6 +34,9 @@ class TfidfConfig:
     use_idf: bool = True
     smooth_idf: bool = True
     sublinear_tf: bool = False
+
+    # Accept single-character tokens too (fixes Section 7 synthetic tests)
+    token_pattern: str = r"(?u)\b\w+\b"
 
 
 def _validate_texts(texts: Sequence[str]) -> None:
@@ -61,8 +71,29 @@ def build_tfidf_vectors(
         use_idf=config.use_idf,
         smooth_idf=config.smooth_idf,
         sublinear_tf=config.sublinear_tf,
+        token_pattern=config.token_pattern,
     )
-    X = vectorizer.fit_transform(texts)
+
+    try:
+        X = vectorizer.fit_transform(texts)
+    except Exception as e:
+        # DEBUG ONLY ON FAILURE (so it doesn't spam normal runs/tests)
+        print("\n[section5_tfidf] ERROR in build_tfidf_vectors()", file=sys.stderr)
+        print(f"  - Exception: {type(e).__name__}: {e}", file=sys.stderr)
+        print(f"  - Config.name     : {config.name}", file=sys.stderr)
+        print(f"  - lowercase       : {config.lowercase}", file=sys.stderr)
+        print(f"  - stop_words      : {config.stop_words}", file=sys.stderr)
+        print(f"  - max_features    : {config.max_features}", file=sys.stderr)
+        print(f"  - ngram_range     : {config.ngram_range}", file=sys.stderr)
+        print(f"  - norm/use_idf/smooth/sublinear: {config.norm}/{config.use_idf}/{config.smooth_idf}/{config.sublinear_tf}", file=sys.stderr)
+        print(f"  - token_pattern   : {config.token_pattern}", file=sys.stderr)
+        print(f"  - N_texts         : {len(texts)}", file=sys.stderr)
+        sample = list(texts[:2])
+        print(f"  - sample texts[0:2]: {[s[:120] for s in sample]}", file=sys.stderr)
+        print("  - Hint: if you see 'empty vocabulary', check token_pattern and whether docs are only stopwords / 1-char tokens.", file=sys.stderr)
+        print("------------------------------------------------------------\n", file=sys.stderr)
+        raise
+
     return vectorizer, X
 
 
