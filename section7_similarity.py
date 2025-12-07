@@ -50,23 +50,16 @@ def top_k_indices(scores: Sequence[float], k: int = 3) -> np.ndarray:
     return order[:k]
 
 
-def top_k_for_all_queries(similarity_matrix: np.ndarray, k: int = 3) -> List[TopKResult]:
+def top_k_for_all_queries(similarity_matrix: np.ndarray, k: int = 3) -> List[List[int]]:
     if similarity_matrix.ndim != 2:
         raise ValueError("similarity_matrix must be 2D")
 
-    results: List[TopKResult] = []
+    results: List[List[int]] = []
     for qi in range(similarity_matrix.shape[0]):
-        scores = similarity_matrix[qi]
+        scores = np.asarray(similarity_matrix[qi], dtype=float).ravel()  # asegura 1D
         top_idx = top_k_indices(scores, k=k)
-        results.append(
-            TopKResult(
-                query_index=qi,
-                top_indices=top_idx.tolist(),
-                top_scores=[float(scores[j]) for j in top_idx],
-            )
-        )
+        results.append(top_idx.tolist())
     return results
-
 
 def validate_text_list(texts: Sequence[str], name: str) -> None:
     if not isinstance(texts, (list, tuple)):
