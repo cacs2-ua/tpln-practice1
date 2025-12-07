@@ -1654,13 +1654,13 @@ if __name__ == "__main__":
 
 
 ----- SECTION 7 -----
-
 %%writefile section7_similarity.py
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List, Sequence, Tuple
+from typing import List, Sequence
 
+import sys
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 
@@ -1708,16 +1708,67 @@ def top_k_indices(scores: Sequence[float], k: int = 3) -> np.ndarray:
     return order[:k]
 
 
-def top_k_for_all_queries(similarity_matrix: np.ndarray, k: int = 3) -> List[List[int]]:
+def top_k_for_all_queries(similarity_matrix: np.ndarray, k: int = 3) -> List[TopKResult]:
+    """
+    For each query (row) in similarity_matrix, return a TopKResult with:
+      - query_index
+      - top_indices (length k, or <=k if fewer papers)
+      - top_scores  (aligned with top_indices)
+
+    Includes extra debug prints ONLY if something crashes inside this function.
+    """
+    if getattr(similarity_matrix, "ndim", None) is None:
+        raise TypeError("similarity_matrix must be array-like and expose .ndim/.shape")
+
     if similarity_matrix.ndim != 2:
         raise ValueError("similarity_matrix must be 2D")
 
-    results: List[List[int]] = []
-    for qi in range(similarity_matrix.shape[0]):
-        scores = np.asarray(similarity_matrix[qi], dtype=float).ravel()  # asegura 1D
-        top_idx = top_k_indices(scores, k=k)
-        results.append(top_idx.tolist())
+    if not isinstance(k, int) or k <= 0:
+        raise ValueError("k must be a positive integer")
+
+    n_queries, n_papers = similarity_matrix.shape
+    results: List[TopKResult] = []
+
+    for qi in range(n_queries):
+        try:
+            # Force 1D numeric row even if input is np.matrix or weird array-like
+            scores = np.asarray(similarity_matrix[qi], dtype=float).ravel()
+
+            if scores.size != n_papers:
+                raise ValueError(
+                    f"Row size mismatch at query {qi}: got {scores.size} scores, expected {n_papers}"
+                )
+
+            top_idx = top_k_indices(scores, k=k)
+            top_scores = [float(scores[j]) for j in top_idx]
+
+            results.append(
+                TopKResult(
+                    query_index=int(qi),
+                    top_indices=[int(x) for x in top_idx.tolist()],
+                    top_scores=top_scores,
+                )
+            )
+
+        except Exception as e:
+            # ---- DEBUG (only when something actually fails) ----
+            print("\n[section7_similarity] ERROR inside top_k_for_all_queries()", file=sys.stderr)
+            print(f"  - Exception: {type(e).__name__}: {e}", file=sys.stderr)
+            print(f"  - similarity_matrix type : {type(similarity_matrix)}", file=sys.stderr)
+            print(f"  - similarity_matrix shape: {getattr(similarity_matrix, 'shape', None)}", file=sys.stderr)
+            print(f"  - similarity_matrix dtype: {getattr(similarity_matrix, 'dtype', None)}", file=sys.stderr)
+            print(f"  - qi (row index)         : {qi}", file=sys.stderr)
+            try:
+                sample = scores[:10].tolist()  # may fail if scores wasn't created
+                print(f"  - scores sample (first 10): {sample}", file=sys.stderr)
+            except Exception:
+                print("  - scores sample (first 10): <unavailable>", file=sys.stderr)
+            print("------------------------------------------------------------\n", file=sys.stderr)
+            # ---------------------------------------------
+            raise
+
     return results
+
 
 def validate_text_list(texts: Sequence[str], name: str) -> None:
     if not isinstance(texts, (list, tuple)):
@@ -1728,13 +1779,7 @@ def validate_text_list(texts: Sequence[str], name: str) -> None:
         raise TypeError(f"{name} must contain only strings")
 
 
-
-
-
-
-Use the following code snipet to compute the pairwise cosine similarity, and to sort the top 3 candidates for each query. In this example, `query_vectors` and `paper_vectors` correspond to the vectorized collections of queries and papers (as stored in the JSON file previously downloaded), respectively. The variable `paper_texts` contain the list of concatenated titles+abstracts of the papers loaded from the JSON file.
-
-
+# Use the following code snipet to compute the pairwise cosine similarity, and to sort the top 3 candidates for each query. In this example, `query_vectors` and `paper_vectors` correspond to the vectorized collections of queries and papers (as stored in the JSON file previously downloaded), respectively. The variable `paper_texts` contain the list of concatenated titles+abstracts of the papers loaded from the JSON file.
 
 
 # =========================
@@ -1787,8 +1832,6 @@ print("### TF-IDF similarity search ###")
 print("#############################")
 for run_name in RUN_ORDER_TFIDF:
     run_similarity_for_run(run_name, tfidf_results)
-
-
 
 
 
@@ -2059,3 +2102,424 @@ class TestSection7Similarity(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+!python -m unittest -v test_all.py
+
+
+
+
+
+
+---- SECTION 8 ----
+
+
+
+## 8) Analysis & Discussion (Part 1 — Step 4)
+
+### 8.1 Relevance criteria per query (from Section 6)
+
+**Query 1 (QUALES / Machine Translation Quality Estimation).**
+The query focuses on *quality estimation (QE)* for machine translation: predicting translation quality **without references**, typically with ML, and motivated by post-editing productivity, cost estimation, and shared tasks. Relevant matches should therefore mention QE/quality estimation, post-editing effort, MT evaluation without references, shared tasks, or closely related *evaluation* methodology. Expected lexical anchors include *quality estimation, QE, post-editing, evaluation, shared task, WMT, machine translation*.
+
+**Query 2 (Unanswerable questions for Machine Reading Comprehension).**
+The query targets *reading comprehension with unanswerable questions*, including *question generation* for unanswerability and data augmentation, explicitly referencing **SQuAD 2.0** and improvements with BERT models. Relevant matches should be about MRC/QA, unanswerable/“nil” answers, question generation, datasets for machine comprehension, and evaluation metrics (F1). Lexical anchors include *reading comprehension, unanswerable, question generation, SQuAD, QA, paragraph, answer extraction, BERT*.
+
+**Query 3 (Unsupervised Neural Text Simplification).**
+The query is about *text simplification*, specifically **unsupervised** neural approaches using unlabeled corpora (Wikipedia), denoising, discriminators/adversarial or discrimination-based losses, and evaluation with human judgments. Relevant matches should mention simplification explicitly (lexical/syntactic), sentence rewriting, simplification datasets, or closely adjacent tasks that explicitly frame simplification. Lexical anchors include *simplification, sentence simplification, unsupervised, denoising, discriminator, rewriting, Wikipedia*.
+
+---
+
+### 8.2 Qualitative retrieval analysis using the Section 7 results table
+
+#### Query 1 (QE for MT): mostly “MT systems/evaluation”, weak QE specificity
+
+Across **BoW** runs, the top results are consistently in the *machine translation* area but rarely match the **QE-without-references** focus. For example, BoW with lowercasing enabled and no stopword removal retrieves **doc 412** (*“Neural Machine Translation with Source Dependency Representation”*) at rank 1 (score ≈ 0.609), followed by **doc 100** (*“HUME: Human UCCA-Based Evaluation of Machine Translation”*) and **doc 936** (*“Has Machine Translation Achieved Human Parity? A Case for Document-level Evaluation”*). These are *on-topic at the MT/evaluation level* (medium relevance), but they do not clearly address QE or post-editing effort prediction.
+
+A notable pattern is **near-duplicate or strongly overlapping evaluation phrasing**: both **doc 100** and **doc 936** include very similar introductory text in the abstract snippet (“achieves parity… we empirically test…”). This is expected under lexical similarity: repeated evaluation boilerplate can dominate cosine similarity and reduce topical diversity in the top-3.
+
+Across **TF-IDF** runs, Query 1 remains largely in the same neighborhood (MT evaluation / NMT papers). For instance, with `tfidf_lc_on_sw_off`, the top-3 are **doc 300** (*“Memory-augmented Neural Machine Translation”*), **doc 100** (HUME), and **doc 469** (*“Semi-Autoregressive Neural Machine Translation”*) with tightly clustered scores (~0.323, 0.321, 0.319). This indicates that TF-IDF did not consistently shift retrieval toward “QE” terminology in this dataset, suggesting either (i) QE papers are scarce in EMNLP 2016–2018 within this subset, or (ii) the strongest overlapping terms (*machine translation, evaluation*) are too generic to isolate QE without additional constraints.
+
+#### Query 2 (Unanswerable questions / MRC): strong topical alignment, especially with stopwords removed and with TF-IDF
+
+For **BoW** with stopwords *not* removed (`bow_lc_on_sw_off`), Query 2’s top-1 is highly relevant: **doc 881** (*“A Nil-Aware Answer Extraction Framework for Question Answering”*, score ≈ 0.645), which directly matches the “unanswerable/nil” framing. However, the remaining top-3 can drift: e.g., **doc 522** (*text normalization with seq2seq*) appears in some BoW variants, indicating that generic neural/seq2seq vocabulary can create superficial similarity when high-frequency function words and broadly shared modeling terms remain.
+
+When **stopword removal is enabled** in BoW (`bow_*_sw_on`), the results become more consistently content-focused for Query 2: **doc 258** (*“Two-Stage Synthesis Networks for Transfer Learning in Machine Comprehension”*), **doc 852** (*“Answer-focused and Position-aware Neural Question Generation”*), and **doc 559** (*sequential open-domain QA dataset*) form a clearly coherent QA/MRC cluster. Qualitatively, this better matches the query’s emphasis on reading comprehension and question generation.
+
+For **TF-IDF**, Query 2 is the most stable and clearly relevant across runs. In all TF-IDF configurations, **doc 660** (*“A Multi-answer Multi-task Framework for Real-world Machine Reading Comprehension”*) is rank 1 (scores ~0.291–0.371 depending on configuration), and other highly relevant items appear such as **doc 194** (*“SQuAD: 100,000+ Questions for Machine Comprehension of Text”*), **doc 255** (RACE dataset), and **doc 258** (machine comprehension transfer learning). This is consistent with TF-IDF emphasizing discriminative task terms (*reading comprehension, SQuAD, question answering*) rather than generic modeling language.
+
+#### Query 3 (Text simplification): TF-IDF clearly improves topical specificity; BoW is noisier
+
+For **BoW**, Query 3’s top-1 is consistently **doc 426** (*“Privacy-preserving Neural Representations of Text”*), whose abstract snippet explicitly mentions *text summarization and text simplification*. This provides a plausible lexical bridge and thus a medium-to-high relevance match. However, BoW’s ranks 2–3 often include clearly off-topic neighbors, e.g., **doc 488** (*unsupervised word translation*) or other general representation learning papers. This suggests that, beyond the single strong lexical hit (simplification mentioned explicitly), BoW struggles to maintain a simplification-focused neighborhood.
+
+For **TF-IDF**, Query 3 becomes substantially more on-target. Across all TF-IDF runs, **doc 780** (*“Integrating Transformer and Paraphrase Rules for Sentence Simplification”*) appears at rank 2, and **doc 239** (*“Sentence Simplification with Deep Reinforcement Learning”*) appears at rank 3 in the lowercased configurations (`tfidf_lc_on_*`). This is a clear qualitative improvement: TF-IDF reliably surfaces *multiple* simplification papers, not just a single document that happens to mention simplification in passing.
+
+---
+
+### 8.3 Do preprocessing toggles matter? (Sections 4/5 + Section 7)
+
+#### (i) Lowercasing (ON vs OFF)
+
+The vectorization inspections show that **lowercasing substantially reduces vocabulary size** by merging case variants: for both BoW and TF-IDF, `lowercase=True` yields **V = 8,404**, whereas `lowercase=False` increases to **V = 10,342** (with stopwords off). This is reflected in sparsity: with a larger vocabulary, density slightly decreases (e.g., BoW density ≈ 0.0110 when lowercased vs ≈ 0.0096 when case-sensitive).
+
+Empirically, **lowercasing tends to improve stability of the retrieved set** (same doc_ids recurring across runs). For example, Query 1 keeps **doc 412** at rank 1 under BoW regardless of case; Query 2 keeps **doc 881** as top-1 under BoW with stopwords off; and Query 3 keeps **doc 426** as top-1 across many variants. Where differences appear, they often concern ranks 2–3, which is consistent with case fragmentation affecting weaker lexical matches more than the strongest shared-topic match.
+
+#### (ii) Stopword removal (OFF vs ON)
+
+Stopword removal has a strong quantitative signature in the matrix statistics: with `stop_words='english'`, **nnz and average nnz per document drop sharply** (e.g., BoW avg nnz/doc ≈ 92.56 → 66.25 when lowercased), indicating that many dimensions correspond to function words and very frequent tokens.
+
+Qualitatively, the impact is most visible for **Query 2**, where stopword removal in BoW shifts results from “partly QA, partly generic seq2seq” toward a more coherent MRC/question-generation set (e.g., **doc 258**, **doc 852**, **doc 559**). For Query 1, stopword removal does not reliably steer retrieval toward QE; instead it often remains within general NMT/evaluation. For Query 3, stopword removal does not fix BoW’s tendency to include off-topic neighbors in ranks 2–3, although the top-1 remains anchored.
+
+A key nuance is confirmed by your diagnostics: with `lowercase=False` and stopwords enabled, there are **155 case-sensitive stopword survivors** (e.g., “The”), meaning stopword removal is **less effective** when the stopword list is lowercase but the vocabulary preserves capitalization. This helps explain why some `lc_off + sw_on` behaviors can remain closer to `sw_off` than expected.
+
+---
+
+### 8.4 Score behavior and interpretability (Section 7)
+
+**Separation within the top-3 (ranking confidence).**
+In several runs, especially TF-IDF for Query 1, scores are **tightly clustered** (e.g., ~0.323 vs ~0.321 vs ~0.319), indicating that multiple documents have very similar weighted lexical overlap with the query; rankings in this regime are relatively fragile to small preprocessing changes. In contrast, Query 3 under TF-IDF shows clearer separation between rank 2 and rank 3 in the lowercased setting (e.g., ~0.295 vs ~0.234), which better supports the interpretation that the top simplification papers form a stronger match than the third candidate.
+
+**Non-comparability of absolute scores across runs.**
+Cosine similarity values should not be compared *across different vectorizer configurations* as if they were on a single shared scale, because each run defines a different feature space (different vocabulary size and token filtering) and, for TF-IDF, different weighting of dimensions. The meaningful comparisons are therefore (i) *within-run* separation patterns and (ii) *across-run* stability and topical relevance of retrieved doc_ids, rather than raw score magnitudes. It is also common that TF-IDF produces numerically smaller similarities than BoW in many settings; this reflects weighting/normalization effects, not necessarily worse retrieval.
+
+---
+
+### 8.5 BoW vs TF-IDF: strengths/weaknesses grounded in the observed results
+
+**BoW (counts).**
+BoW performs well when relevance is driven by **explicit shared keywords** (e.g., Query 2 retrieving “Nil-Aware Answer Extraction” as top-1 in multiple BoW variants). However, BoW is more vulnerable to retrieval driven by broad, frequent terms and generic modeling language, which can introduce off-topic items in ranks 2–3 (e.g., seq2seq normalization or NMT attention papers appearing for Query 2 when stopwords are not removed). BoW also shows signs of **lexical near-duplicate attraction** (e.g., evaluation papers with very similar phrasing both appearing in Query 1’s top-3), which can reduce diversity.
+
+**TF-IDF (weighted).**
+TF-IDF more consistently promotes **discriminative, topic-bearing terminology**, which is reflected most clearly in Query 3: it reliably retrieves multiple *sentence simplification* papers (e.g., **doc 780**, **doc 239**), whereas BoW often retrieves only one simplification-adjacent paper and then drifts. For Query 2, TF-IDF yields stable, thematically coherent QA/MRC results across configurations (including explicit dataset papers like SQuAD). The core limitation remains that TF-IDF is still fundamentally lexical: if the corpus uses different terminology for the same concept (synonyms/paraphrases), the method can miss semantically relevant papers that lack shared surface forms.
+
+---
+
+### 8.6 Conclusion
+
+Overall, the evidence suggests that **TF-IDF provides more reliable topical specificity** than BoW for these queries, particularly when the target task has distinctive terminology present in the dataset (notably text simplification and reading comprehension datasets). **BoW can match strong keyword cases**, but it is more prone to generic overlap and reduced diversity through near-duplicate lexical phrasing. Preprocessing choices matter in predictable ways: **lowercasing reduces vocabulary fragmentation and improves stability**, while **stopword removal tends to improve content focus**, with the important caveat that stopword removal is partially undermined when `lowercase=False` due to case-sensitive stopword survivors.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+---- SECTION 8 PLOTS ----
+
+%%writefile section8_plots.py
+from __future__ import annotations
+
+from dataclasses import asdict
+from typing import Dict, List, Optional, Sequence, Tuple
+
+import numpy as np
+
+try:
+    import pandas as pd
+except Exception as e:
+    raise ImportError("section8_plots.py requires pandas. Install/enable pandas first.") from e
+
+import matplotlib.pyplot as plt
+from sklearn.metrics.pairwise import cosine_similarity
+
+
+# -----------------------------
+# Utilities (deterministic top-k)
+# -----------------------------
+def _top_k_indices(scores: np.ndarray, k: int = 3) -> np.ndarray:
+    """
+    Deterministic top-k indices by:
+      1) higher score first
+      2) lower index first (tie-break)
+    """
+    s = np.asarray(scores, dtype=float).ravel()
+    idx = np.arange(s.size)
+    order = np.lexsort((idx, -s))  # primary: -score, tie: idx
+    return order[: min(k, s.size)]
+
+
+def _safe_str(x) -> str:
+    if x is None:
+        return ""
+    return x if isinstance(x, str) else str(x)
+
+
+def _get_paper_meta(papers_df: Optional["pd.DataFrame"], doc_id: int) -> Dict[str, object]:
+    """
+    Fetch title/venue/year/url/abstract_snippet from papers_df if available,
+    else return empty placeholders.
+    """
+    if papers_df is None:
+        return {
+            "title": "",
+            "venue": "",
+            "year": "",
+            "url": "",
+            "abstract_snippet": "",
+        }
+
+    row = papers_df.iloc[int(doc_id)]
+    title = _safe_str(row.get("title", ""))
+    venue = _safe_str(row.get("venue", ""))
+    year = row.get("year", "")
+    url = _safe_str(row.get("url", ""))
+    abstract = _safe_str(row.get("abstract", ""))
+
+    snippet = abstract[:240] + ("..." if len(abstract) > 240 else "")
+    return {
+        "title": title,
+        "venue": venue,
+        "year": year,
+        "url": url,
+        "abstract_snippet": snippet,
+    }
+
+
+# -----------------------------
+# Build results table (72 rows)
+# -----------------------------
+def build_results_table(
+    *,
+    bow_results: Dict,
+    tfidf_results: Dict,
+    query_texts: Sequence[str],
+    query_labels: Sequence[str],
+    paper_texts: Sequence[str],
+    papers_df: Optional["pd.DataFrame"] = None,
+    run_order_bow: Optional[List[str]] = None,
+    run_order_tfidf: Optional[List[str]] = None,
+    k: int = 3,
+) -> "pd.DataFrame":
+    """
+    Recomputes and returns a single tidy DataFrame with top-k results for:
+      - BoW (4 runs)
+      - TF-IDF (4 runs)
+    Total rows: 2 * 4 * 3 * k = 72 (when k=3 and 3 queries).
+    """
+    if len(query_texts) != 3 or len(query_labels) != 3:
+        raise ValueError("Expected exactly 3 queries (query_texts/query_labels length must be 3).")
+    if len(paper_texts) == 0:
+        raise ValueError("paper_texts is empty.")
+
+    if run_order_bow is None:
+        run_order_bow = ["bow_lc_on_sw_off", "bow_lc_on_sw_on", "bow_lc_off_sw_off", "bow_lc_off_sw_on"]
+    if run_order_tfidf is None:
+        run_order_tfidf = ["tfidf_lc_on_sw_off", "tfidf_lc_on_sw_on", "tfidf_lc_off_sw_off", "tfidf_lc_off_sw_on"]
+
+    rows: List[Dict[str, object]] = []
+
+    def _collect_for_family(repr_name: str, results_dict: Dict, run_order: List[str]) -> None:
+        for run_name in run_order:
+            if run_name not in results_dict:
+                raise KeyError(f"Run '{run_name}' not found in {repr_name} results dict.")
+
+            out = results_dict[run_name]
+            cfg = out["config"]
+            vectorizer = out["vectorizer"]
+            X_docs = out["X"]
+
+            X_q = vectorizer.transform(list(query_texts))
+            S = cosine_similarity(X_q, X_docs)  # shape: (3, N_docs)
+
+            for qi in range(3):
+                top_idx = _top_k_indices(S[qi], k=k)
+                for rank_i, doc_id in enumerate(top_idx, start=1):
+                    score = float(S[qi, doc_id])
+                    meta = _get_paper_meta(papers_df, int(doc_id))
+
+                    rows.append(
+                        {
+                            "repr": repr_name,
+                            "run": run_name,
+                            "lowercase": bool(getattr(cfg, "lowercase", False)),
+                            "stop_words": getattr(cfg, "stop_words", None),
+                            "query": query_labels[qi],
+                            "rank": int(rank_i),
+                            "doc_id": int(doc_id),
+                            "score": score,
+                            **meta,
+                        }
+                    )
+
+    _collect_for_family("BoW", bow_results, run_order_bow)
+    _collect_for_family("TF-IDF", tfidf_results, run_order_tfidf)
+
+    df = pd.DataFrame(rows)
+
+    # stable sorting for nicer plots
+    df["repr"] = pd.Categorical(df["repr"], categories=["BoW", "TF-IDF"], ordered=True)
+    df["rank"] = df["rank"].astype(int)
+    df["doc_id"] = df["doc_id"].astype(int)
+    df["score"] = df["score"].astype(float)
+
+    return df.sort_values(["repr", "run", "query", "rank"]).reset_index(drop=True)
+
+
+# -----------------------------
+# Plot A: Score separation
+# -----------------------------
+def plot_score_separation(
+    results_df: "pd.DataFrame",
+    *,
+    query_label: str,
+    run_order: Optional[List[str]] = None,
+    repr_filter: Optional[str] = None,  # None => both, else "BoW" or "TF-IDF"
+) -> None:
+    """
+    Line plot of top-1/top-2/top-3 scores per run for a given query.
+    """
+    df = results_df.copy()
+    df = df[df["query"] == query_label]
+
+    if repr_filter is not None:
+        df = df[df["repr"] == repr_filter]
+
+    if run_order is None:
+        # default: whatever appears, in the DataFrame order
+        run_order = list(dict.fromkeys(df["run"].tolist()))
+
+    # pivot: index=run, columns=rank, values=score
+    pivot = (
+        df.pivot_table(index="run", columns="rank", values="score", aggfunc="first")
+        .reindex(run_order)
+    )
+
+    x = np.arange(len(pivot.index))
+    plt.figure(figsize=(11, 4.2))
+    for r in [1, 2, 3]:
+        if r in pivot.columns:
+            plt.plot(x, pivot[r].values, marker="o", label=f"rank {r}")
+
+    title = f"Score separation (top-3) — {query_label}"
+    if repr_filter:
+        title += f" — {repr_filter}"
+    plt.title(title)
+    plt.xlabel("Run")
+    plt.ylabel("Cosine similarity")
+    plt.xticks(x, pivot.index, rotation=30, ha="right")
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
+
+
+# -----------------------------
+# Plot B: Jaccard overlap heatmap
+# -----------------------------
+def _jaccard(a: set, b: set) -> float:
+    if not a and not b:
+        return 1.0
+    if not a or not b:
+        return 0.0
+    return len(a & b) / len(a | b)
+
+
+def plot_jaccard_heatmap(
+    results_df: "pd.DataFrame",
+    *,
+    query_label: str,
+    run_order: Optional[List[str]] = None,
+    repr_filter: Optional[str] = None,  # None => both, else "BoW" or "TF-IDF"
+    k: int = 3,
+) -> None:
+    """
+    Heatmap of Jaccard overlap between runs, based on the set of top-k doc_ids.
+    """
+    df = results_df.copy()
+    df = df[df["query"] == query_label]
+    df = df[df["rank"] <= k]
+
+    if repr_filter is not None:
+        df = df[df["repr"] == repr_filter]
+
+    if run_order is None:
+        run_order = list(dict.fromkeys(df["run"].tolist()))
+
+    top_sets: Dict[str, set] = {}
+    for run in run_order:
+        s = set(df[df["run"] == run]["doc_id"].tolist())
+        top_sets[run] = s
+
+    M = np.zeros((len(run_order), len(run_order)), dtype=float)
+    for i, ri in enumerate(run_order):
+        for j, rj in enumerate(run_order):
+            M[i, j] = _jaccard(top_sets[ri], top_sets[rj])
+
+    plt.figure(figsize=(7.5, 6.5))
+    plt.imshow(M)
+    plt.colorbar()
+    plt.title(f"Top-{k} Jaccard overlap (doc_id sets) — {query_label}" + (f" — {repr_filter}" if repr_filter else ""))
+    plt.xticks(np.arange(len(run_order)), run_order, rotation=45, ha="right")
+    plt.yticks(np.arange(len(run_order)), run_order)
+    plt.tight_layout()
+    plt.show()
+
+
+# -----------------------------
+# Optional: BoW vs TF-IDF diversity summary
+# -----------------------------
+def plot_diversity_bow_vs_tfidf(
+    results_df: "pd.DataFrame",
+    *,
+    query_label: str,
+    k: int = 3,
+) -> None:
+    """
+    Bar chart: number of unique doc_ids in top-k across runs, grouped by repr (BoW vs TF-IDF).
+    """
+    df = results_df.copy()
+    df = df[(df["query"] == query_label) & (df["rank"] <= k)]
+
+    counts = (
+        df.groupby("repr")["doc_id"]
+        .nunique()
+        .reindex(["BoW", "TF-IDF"])
+    )
+
+    plt.figure(figsize=(6.5, 4.2))
+    plt.bar(counts.index.astype(str), counts.values)
+    plt.title(f"Diversity of retrieved doc_ids (unique in top-{k}) — {query_label}")
+    plt.xlabel("Representation")
+    plt.ylabel("Unique doc_ids across runs")
+    plt.tight_layout()
+    plt.show()
+
+
+
+
+
+    import pandas as pd
+
+from section8_plots import build_results_table
+
+RUN_ORDER_BOW   = ["bow_lc_on_sw_off", "bow_lc_on_sw_on", "bow_lc_off_sw_off", "bow_lc_off_sw_on"]
+RUN_ORDER_TFIDF = ["tfidf_lc_on_sw_off", "tfidf_lc_on_sw_on", "tfidf_lc_off_sw_off", "tfidf_lc_off_sw_on"]
+
+results_df = build_results_table(
+    bow_results=bow_results,
+    tfidf_results=tfidf_results,
+    query_texts=query_texts,
+    query_labels=query_labels,
+    paper_texts=paper_texts,
+    papers_df=papers_df,          # from Section 3 (you already have it)
+    run_order_bow=RUN_ORDER_BOW,
+    run_order_tfidf=RUN_ORDER_TFIDF,
+    k=3,
+)
+
+print("results_df shape:", results_df.shape)  # expected: (72, ...)
+display(results_df.head(12))
+
+# Optional: save for traceability
+results_df.to_csv("part1_top3_results_table.csv", index=False)
+
+
+
+
